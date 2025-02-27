@@ -200,7 +200,7 @@ class TextFinder:
 
 class Trainer:
     def __init__(self, model: Transformer, text: str, optimizer: torch.optim.Optimizer,
-                 device: torch.device = ("cuda" if torch.cuda.is_available() else "cpu"),
+                 device: torch.device = ("mps" if torch.mps.is_available() else "cpu"),
                  batch_size: int = 1, max_batches: Optional[int] = None, print_interval: int = 1,
                  epochs: int = 1):
         print("Trainer Constructor...")
