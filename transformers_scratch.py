@@ -177,16 +177,17 @@ output:
 nn.Linear(d_model, d_vocab): R^{n_c * d_m} -> R^{n_c * d_v}
 """
 
-class TextFinder:
-    def __init__(self, text):
+class TextProcessor:
+    def __init__(self, text, cfg):
         print("=="*30)
         print("TextFinder Constructor...")
         self.text = text
         self.word_index = self.create_word_index(text)
+        self.n_context = cfg.n_context
 
-    def create_word_index(self, text):
+    def create_word_index(self):
         # Create a word index mapping each word to a unique index
-        words = re.findall(r'\b\w+\b', text.lower())
+        words = re.findall(r'\b\w+\b', self.text.lower())
         sorted_words = sorted(set(words))
         word_to_index = {word: idx for idx, word in enumerate(sorted_words)}
         return word_to_index
@@ -196,7 +197,15 @@ class TextFinder:
         words = re.findall(r'\b\w+\b', self.text.lower())
         int_sequence = [self.word_index[word] for word in words if word in self.word_index]
         return torch.tensor(int_sequence, dtype=torch.long)
-
+    
+    def split_into_context_tensors(self):
+        # for splitting long text into separate tensors of length n_context
+        tensor = self.text_to_tensor()
+        n = self.n_context
+        trimmed_length = (len(tensor) // n) * n  # Ensure the length is a multiple of n_context
+        tensor = tensor[:trimmed_length]  # Trim excess elements
+        return [tensor[i:i + n] for i in range(0, len(tensor), n)]
+    
 
 class Trainer:
     def __init__(self, model: Transformer, text: str, optimizer: torch.optim.Optimizer,
@@ -212,7 +221,7 @@ class Trainer:
         self.max_batches = max_batches
         self.print_interval = print_interval
         self.epochs = epochs
-        self.dataset = TextFinder(text)
+        self.dataset = TextProcessor(text)
         self.data_tensor = self.dataset.text_to_tensor().to(device)
         self.dataloader = self.create_dataloader()
 
@@ -221,7 +230,7 @@ class Trainer:
 
     def create_dataloader(self):
         # Create batches
-        data_batches = self.data_tensor.unfold(0, self.batch_size, self.batch_size)
+        data_batches = self.data_tensor.unfold(0, self.batch_size, 2)
         return DataLoader(data_batches, batch_size=1, shuffle=False)  # Using DataLoader to load batches
 
     def train(self):
