@@ -1,6 +1,8 @@
 
 from dataclasses import dataclass
+from pathlib import Path
 
+import requests
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -329,6 +331,41 @@ class Trainer:
         return generated_text
 
 
+
+def get_gutenberg_book(
+	id: int|None = 84,
+	data_temp: Path|str = "../data/gutenberg_data",
+	remove_gutenberg_meta: bool = True,
+) -> str:
+	
+	data_temp = Path(data_temp)
+	data_temp.mkdir(parents=True, exist_ok=True)
+	
+	url: str = f"https://www.gutenberg.org/cache/epub/{id}/pg{id}.txt"
+	data_path: Path = Path(data_temp) / f"{id}.txt"
+	data: str
+	# read from cache if it exists
+	if data_path.exists():
+		with open(data_path, 'r', encoding='utf-8') as file:
+			data = file.read()
+	else:
+		# download if it doesn't exist
+		response = requests.get(url)
+		response.raise_for_status()  # Ensure that the download was successful
+		data = response.text
+
+		# save to cache
+		with open(data_path, 'w', encoding='utf-8') as file:
+			file.write(data)
+
+	# remove header/footer
+	if remove_gutenberg_meta:
+		data = '***'.join(data.split('***')[2:])
+		data = '***'.join(data.split('***')[:-1])
+	
+	return data
+
+
 def main():
     gpt_config = GPTConfig()
     gpt_model = Transformer(gpt_config)
@@ -340,8 +377,9 @@ def main():
         To put something in a markov chain or neural network, we need to turn it into numbers. this is straightforward for images: each pixel is already a number!
         In computers, text is stored as a sequence of numbers. Our neural network, in principle, can learn to predict the next number in the sequence. However, each number usually represents a single letter, or even just part of a letter.
     """
-
-    trainer = Trainer(gpt_model, some_text, optimizer, epochs=100, batch_size=50, print_interval=100)
+    some_book = get_gutenberg_book(data_temp="./gutenberg_data")
+    
+    trainer = Trainer(gpt_model, some_book, optimizer, epochs=100, batch_size=50, print_interval=100)
 
     print("Starting training...")
     trained_model, training_records = trainer.train()
