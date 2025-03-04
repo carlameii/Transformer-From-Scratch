@@ -1,3 +1,4 @@
+
 from dataclasses import dataclass
 
 import torch
@@ -9,8 +10,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from typing import Optional, Tuple, List
 import matplotlib.pyplot as plt
-
-
 import re
 
 @dataclass
@@ -39,6 +38,7 @@ class GPTConfig:
         )
 
 
+
 # note: the residual stream is `n_context` by `d_model`
 
 # this is the row-wise (last dimension) softmax of x
@@ -57,20 +57,27 @@ class AttentionHead(nn.Module):
         self.wv = nn.Linear(self.d_model, self.d_head)
         self.wo = nn.Linear(self.d_head, self.d_model)
 
-    def forward(self, x: Int[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
+    def forward(self,
+                x: Int[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
         def masking_matrix(n_context):
             mask = torch.zeros((n_context, n_context))  # Start with all 0s
-            mask[torch.triu(torch.ones((n_context, n_context)), diagonal=1) == 1] = -float(
-                'inf')  # Set above diagonal to -inf
+            mask[torch.triu(torch.ones((n_context, n_context)), diagonal=1) == 1] = -float('inf')  # Set above diagonal to -inf
             return mask
 
         M = masking_matrix(x.shape[0])
         # softmax_argument = x*self.wq*torch.transpose(self.wk)*torch.transpose(x) + M
-        wk_out = torch.transpose(self.wk(x), 0, 1)
+        # wk_out = torch.transpose(self.wk(x), 0, 1)
+        wk_out = self.wk(x).transpose(-2, -1)  # Correct transposition
+
+        # wk_out = self.wk(x).transpose(-2, -1)
         # print("WK shape ", wk_out.shape)
+        # print("WK shape: torch.transpose(self.wk(x), 0, 1) ", torch.transpose(self.wk(x), 0, 1).shape)
+        # print("WK shape: self.wk(x).transpose(-2, -1) ", self.wk(x).transpose(-2, -1).shape)
+
         wq_out = self.wq(x)
         # print("WQ shape ", wq_out.shape)
         softmax_out = F.softmax((wq_out @ wk_out + M), dim=-1)
+
         # print("Softmax shape ", softmax_out.shape)
         wv_out = self.wv(x)
         # print("WV shape ", wv_out.shape)
@@ -108,7 +115,6 @@ class MultiHeadedAttention(nn.Module):
 
         return output
 
-
 class MLP(nn.Module):
     def __init__(self, cfg: GPTConfig):
         print("MLP Constructor...")
@@ -124,9 +130,11 @@ class MLP(nn.Module):
         self.relu = nn.ReLU()
         self.lin2 = nn.Linear(self.d_mlp, self.d_model)
 
-    def forward(self, x: Int[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
+    def forward(self,
+                x: Int[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
         # apply things in sequence
-        out = self.lin1(x.flatten(start_dim=1))
+        # out = self.lin1(x.flatten(start_dim=1))
+        out = self.lin1(x)  # No need to flatten
         out = self.relu(out)
         out = self.lin2(out)
         return out
@@ -140,16 +148,23 @@ class TransformerBlock(nn.Module):
         self.multiheadattn = MultiHeadedAttention(cfg)
         self.mlp = MLP(cfg)
 
-    def forward(self, x: Float[torch.Tensor, "n_context d_vocab"]) -> Float[torch.Tensor, "n_context d_vocab"]:
-        out = self.multiheadattn(x)
-        out = self.mlp(out) + x
+    # def forward(self,
+    #             x: Float[torch.Tensor, "n_context d_vocab"]) -> Float[torch.Tensor, "n_context d_vocab"]:
+    #     out = self.multiheadattn(x)
+    #     out = self.mlp(out) + x
+    #     return out
+
+    # d_model instead of d_vocab
+    def forward(self, x: Float[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
+        out = self.multiheadattn(x)  # Ensures the shape is (n_context, d_model)
+        out = self.mlp(out) + x  # Residual connection
         return out
 
 
 class Transformer(nn.Module):
 
     def __init__(self, cfg: GPTConfig):
-        print("**" * 30)
+        print("**"*30)
         print("Transformer Constructor...")
         super().__init__()
         self.embedding = nn.Embedding(cfg.d_vocab, cfg.d_model)
@@ -178,41 +193,59 @@ output:
 nn.Linear(d_model, d_vocab): R^{n_c * d_m} -> R^{n_c * d_v}
 """
 
-
-class TextProcessor:
-    def __init__(self, text, cfg):
-        print("==" * 30)
+class TextFinder:
+    def __init__(self, text):
+        print("=="*30)
         print("TextFinder Constructor...")
         self.text = text
         self.word_index = self.create_word_index(text)
-        self.n_context = cfg.n_context
 
-    def create_word_index(self):
-        # Create a word index mapping each word to a unique index
-        words = re.findall(r'\b\w+\b', self.text.lower())
+
+        # added below
+        self.index_to_word = {idx: word for word, idx in self.word_index.items()}  # Reverse mapping
+
+    # def create_word_index(self, text):
+    #     # Create a word index mapping each word to a unique index
+    #     words = re.findall(r'\b\w+\b', text.lower())
+    #     sorted_words = sorted(set(words))
+    #     # word_to_index = {word: idx for idx, word in enumerate(sorted_words)}
+    #     # return word_to_index
+    #     return {word: idx for idx, word in enumerate(sorted_words)}
+    #
+    # def text_to_tensor(self):
+    #     # Convert the text into a tensor representation
+    #     words = re.findall(r'\b\w+\b', self.text.lower())
+    #     int_sequence = [self.word_index[word] for word in words if word in self.word_index]
+    #     return torch.tensor(int_sequence, dtype=torch.long)
+
+    def create_word_index(self, text):
+        # Create a word index mapping each word to a unique index, with [UNK] token
+        words = re.findall(r'\b\w+\b', text.lower())
         sorted_words = sorted(set(words))
-        word_to_index = {word: idx for idx, word in enumerate(sorted_words)}
-        return word_to_index
+        sorted_words.append("[UNK]")  # Add an UNK token at the end
+        return {word: idx for idx, word in enumerate(sorted_words)}
 
     def text_to_tensor(self):
-        # Convert the text into a tensor representation
+        # Convert the text into a tensor representation, with [UNK] handling
         words = re.findall(r'\b\w+\b', self.text.lower())
-        int_sequence = [self.word_index[word] for word in words if word in self.word_index]
+        int_sequence = [self.word_index.get(word, self.word_index["[UNK]"]) for word in words]
         return torch.tensor(int_sequence, dtype=torch.long)
 
-    def split_into_context_tensors(self):
-        # for splitting long text into separate tensors of length n_context
-        tensor = self.text_to_tensor()
-        n = self.n_context
-        trimmed_length = (len(tensor) // n) * n  # Ensure the length is a multiple of n_context
-        tensor = tensor[:trimmed_length]  # Trim excess elements
-        return [tensor[i:i + n] for i in range(0, len(tensor), n)]
+    def tensor_to_text(self, tensor):
+        # Convert the tensor back to words using the index_to_word mapping
+        word_list = [self.index_to_word.get(idx.item(), "[UNK]") for idx in tensor]
+        return " ".join(word_list)
 
 
 class Trainer:
-    def __init__(self, model: Transformer, text: str, optimizer: torch.optim.Optimizer,
-                 device: torch.device = ("mps" if torch.mps.is_available() else "cpu"),
-                 batch_size: int = 1, max_batches: Optional[int] = None, print_interval: int = 1,
+    """
+    for mac M1 chip, use mps instead of cuda
+    """
+    def __init__(self, model: Transformer,
+                 text: str, optimizer: torch.optim.Optimizer,
+                 device: torch.device = ("cuda" if torch.cuda.is_available() else "cpu"),
+                 batch_size: int = 1, max_batches: Optional[int] = None,
+                 print_interval: int = 1,
                  epochs: int = 1):
         print("Trainer Constructor...")
         self.model = model
@@ -223,7 +256,7 @@ class Trainer:
         self.max_batches = max_batches
         self.print_interval = print_interval
         self.epochs = epochs
-        self.dataset = TextProcessor(text)
+        self.dataset = TextFinder(text)
         self.data_tensor = self.dataset.text_to_tensor().to(device)
         self.dataloader = self.create_dataloader()
 
@@ -232,14 +265,16 @@ class Trainer:
 
     def create_dataloader(self):
         # Create batches
-        data_batches = self.data_tensor.unfold(0, self.batch_size, 2)
+        # TODO double check the unfold
+        data_batches = self.data_tensor.unfold(0, self.batch_size, self.batch_size)
         return DataLoader(data_batches, batch_size=1, shuffle=False)  # Using DataLoader to load batches
 
     def train(self):
         print(f"Training with device: {self.device}")
         training_records: List[dict] = []
         self.model.train()
-
+        loss_values = []
+        
         for epoch in range(self.epochs):
             print(f"Epoch {epoch + 1}/{self.epochs}")
             for i, batch in tqdm(enumerate(self.dataloader), total=len(self.dataloader), desc="Training"):
@@ -262,31 +297,57 @@ class Trainer:
                     "batch": i,
                     "loss": loss.item(),
                 })
-                
+                loss_values.append(loss.item())  # Store loss value
+
+
                 if i % self.print_interval == 0:
                     print(f"Batch {i}, Loss: {loss.item()}")
 
                 if self.max_batches is not None and i >= self.max_batches:
                     break
                 
-                losses = [record["loss"] for record in training_records]
-                plt.figure(figsize=(8, 5))
-                plt.plot(batches, losses, label="Training Loss", marker="o", linestyle="-")
-                plt.xlabel("Batch")
-                plt.ylabel("Loss")
-                plt.title("Training Loss Over Batches")
-                plt.legend()
-                plt.grid()
-                plt.show()
+        plt.figure(figsize=(10, 5))
+        plt.plot(loss_values, label="Training Loss")
+        plt.xlabel("Batch")
+        plt.ylabel("Loss")
+        plt.title("Training Loss Over Time")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+                
 
         return self.model, training_records
+
+
+    def generate(self, prompt: str, max_tokens: int = 50, temperature: float = 1.0) -> str:
+        self.model.eval()
+
+        text_finder = TextFinder(prompt)
+        input_tensor = text_finder.text_to_tensor().unsqueeze(0).to(self.device)
+
+        generated_tokens = input_tensor.squeeze(0).tolist()
+
+        for _ in range(max_tokens):
+            logits = self.model(input_tensor)
+            logits = logits[:, -1, :] / temperature
+            probabilities = F.softmax(logits, dim=-1)
+            next_token = torch.multinomial(probabilities, 1).item()
+
+            generated_tokens.append(next_token)
+            input_tensor = torch.cat([input_tensor, torch.tensor([[next_token]], device=self.device)], dim=1)
+
+        # Use `index_to_word` instead of `word_index`
+        generated_text = text_finder.tensor_to_text(torch.tensor(generated_tokens))
+
+        return generated_text
 
 
 def main():
     gpt_config = GPTConfig()
     gpt_model = Transformer(gpt_config)
 
-    optimizer = optim.Adam(gpt_model.parameters(), lr=0.001)
+    optimizer = optim.Adam(gpt_model.parameters(), lr=0.01)
 
     some_text = """
         In reality, of course, we don't construct such chains explicitly, but instead we want them to learn from data.
@@ -294,7 +355,7 @@ def main():
         In computers, text is stored as a sequence of numbers. Our neural network, in principle, can learn to predict the next number in the sequence. However, each number usually represents a single letter, or even just part of a letter.
     """
 
-    trainer = Trainer(gpt_model, some_text, optimizer, epochs=1, batch_size=1, print_interval=1)
+    trainer = Trainer(gpt_model, some_text, optimizer, epochs=100, batch_size=50, print_interval=100)
 
     print("Starting training...")
     trained_model, training_records = trainer.train()
@@ -304,6 +365,15 @@ def main():
     for record in training_records:
         print(f"Batch {record['batch']}, Loss: {record['loss']}")
 
+    print("**"*50)
+    torch.save(trained_model, "model.pt")
+
+    # Generate text with the trained model
+    prompt = "In reality, of course, we don't construct"
+    generated_text = trainer.generate(prompt)
+
+    print("Generated text:")
+    print(generated_text)
 
 if __name__ == "__main__":
     main()
