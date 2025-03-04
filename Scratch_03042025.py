@@ -11,7 +11,7 @@ from jaxtyping import Float, Int
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from typing import Optional, Tuple, List
-
+import matplotlib.pyplot as plt
 import re
 
 @dataclass
@@ -275,7 +275,8 @@ class Trainer:
         print(f"Training with device: {self.device}")
         training_records: List[dict] = []
         self.model.train()
-
+        loss_values = []
+        
         for epoch in range(self.epochs):
             print(f"Epoch {epoch + 1}/{self.epochs}")
             for i, batch in tqdm(enumerate(self.dataloader), total=len(self.dataloader), desc="Training"):
@@ -298,12 +299,25 @@ class Trainer:
                     "batch": i,
                     "loss": loss.item(),
                 })
+                loss_values.append(loss.item())  # Store loss value
+
 
                 if i % self.print_interval == 0:
                     print(f"Batch {i}, Loss: {loss.item()}")
 
                 if self.max_batches is not None and i >= self.max_batches:
                     break
+                
+        plt.figure(figsize=(10, 5))
+        plt.plot(loss_values, label="Training Loss")
+        plt.xlabel("Batch")
+        plt.ylabel("Loss")
+        plt.title("Training Loss Over Time")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+                
 
         return self.model, training_records
 
