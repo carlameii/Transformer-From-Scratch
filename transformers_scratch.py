@@ -8,9 +8,10 @@ from jaxtyping import Float, Int
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from typing import Optional, Tuple, List
+import matplotlib.pyplot as plt
+
 
 import re
-
 
 @dataclass
 class GPTConfig:
@@ -261,12 +262,22 @@ class Trainer:
                     "batch": i,
                     "loss": loss.item(),
                 })
-
+                
                 if i % self.print_interval == 0:
                     print(f"Batch {i}, Loss: {loss.item()}")
 
                 if self.max_batches is not None and i >= self.max_batches:
                     break
+                
+                losses = [record["loss"] for record in training_records]
+                plt.figure(figsize=(8, 5))
+                plt.plot(batches, losses, label="Training Loss", marker="o", linestyle="-")
+                plt.xlabel("Batch")
+                plt.ylabel("Loss")
+                plt.title("Training Loss Over Batches")
+                plt.legend()
+                plt.grid()
+                plt.show()
 
         return self.model, training_records
 
