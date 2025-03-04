@@ -57,23 +57,17 @@ class AttentionHead(nn.Module):
         self.wv = nn.Linear(self.d_model, self.d_head)
         self.wo = nn.Linear(self.d_head, self.d_model)
 
-    def forward(self,
-                x: Int[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
+    def forward(self, x: Int[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
         def masking_matrix(n_context):
             mask = torch.zeros((n_context, n_context))  # Start with all 0s
-            mask[torch.triu(torch.ones((n_context, n_context)), diagonal=1) == 1] = -float('inf')  # Set above diagonal to -inf
+            mask[torch.triu(torch.ones((n_context, n_context)), diagonal=1) == 1] = -float(
+                'inf')  # Set above diagonal to -inf
             return mask
 
         M = masking_matrix(x.shape[0])
         # softmax_argument = x*self.wq*torch.transpose(self.wk)*torch.transpose(x) + M
-        # wk_out = torch.transpose(self.wk(x), 0, 1)
-        wk_out = self.wk(x).transpose(-2, -1)  # Correct transposition
-
-        # wk_out = self.wk(x).transpose(-2, -1)
+        wk_out = torch.transpose(self.wk(x), 0, 1)
         # print("WK shape ", wk_out.shape)
-        # print("WK shape: torch.transpose(self.wk(x), 0, 1) ", torch.transpose(self.wk(x), 0, 1).shape)
-        # print("WK shape: self.wk(x).transpose(-2, -1) ", self.wk(x).transpose(-2, -1).shape)
-
         wq_out = self.wq(x)
         # print("WQ shape ", wq_out.shape)
         softmax_out = F.softmax((wq_out @ wk_out + M), dim=-1)
@@ -129,11 +123,9 @@ class MLP(nn.Module):
         self.relu = nn.ReLU()
         self.lin2 = nn.Linear(self.d_mlp, self.d_model)
 
-    def forward(self,
-                x: Int[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
+    def forward(self, x: Int[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
         # apply things in sequence
-        # out = self.lin1(x.flatten(start_dim=1))
-        out = self.lin1(x)  # No need to flatten
+        out = self.lin1(x.flatten(start_dim=1))
         out = self.relu(out)
         out = self.lin2(out)
         return out
@@ -147,16 +139,9 @@ class TransformerBlock(nn.Module):
         self.multiheadattn = MultiHeadedAttention(cfg)
         self.mlp = MLP(cfg)
 
-    # def forward(self,
-    #             x: Float[torch.Tensor, "n_context d_vocab"]) -> Float[torch.Tensor, "n_context d_vocab"]:
-    #     out = self.multiheadattn(x)
-    #     out = self.mlp(out) + x
-    #     return out
-
-    # d_model instead of d_vocab
-    def forward(self, x: Float[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
-        out = self.multiheadattn(x)  # Ensures the shape is (n_context, d_model)
-        out = self.mlp(out) + x  # Residual connection
+    def forward(self, x: Float[torch.Tensor, "n_context d_vocab"]) -> Float[torch.Tensor, "n_context d_vocab"]:
+        out = self.multiheadattn(x)
+        out = self.mlp(out) + x
         return out
 
 
@@ -192,58 +177,40 @@ output:
 nn.Linear(d_model, d_vocab): R^{n_c * d_m} -> R^{n_c * d_v}
 """
 
-class TextFinder:
-    def __init__(self, text):
+class TextProcessor:
+    def __init__(self, text, cfg):
         print("=="*30)
         print("TextFinder Constructor...")
         self.text = text
         self.word_index = self.create_word_index(text)
+        self.n_context = cfg.n_context
 
-        # added below
-        self.index_to_word = {idx: word for word, idx in self.word_index.items()}  # Reverse mapping
-
-    # def create_word_index(self, text):
-    #     # Create a word index mapping each word to a unique index
-    #     words = re.findall(r'\b\w+\b', text.lower())
-    #     sorted_words = sorted(set(words))
-    #     # word_to_index = {word: idx for idx, word in enumerate(sorted_words)}
-    #     # return word_to_index
-    #     return {word: idx for idx, word in enumerate(sorted_words)}
-    #
-    # def text_to_tensor(self):
-    #     # Convert the text into a tensor representation
-    #     words = re.findall(r'\b\w+\b', self.text.lower())
-    #     int_sequence = [self.word_index[word] for word in words if word in self.word_index]
-    #     return torch.tensor(int_sequence, dtype=torch.long)
-
-    def create_word_index(self, text):
-        # Create a word index mapping each word to a unique index, with [UNK] token
-        words = re.findall(r'\b\w+\b', text.lower())
+    def create_word_index(self):
+        # Create a word index mapping each word to a unique index
+        words = re.findall(r'\b\w+\b', self.text.lower())
         sorted_words = sorted(set(words))
-        sorted_words.append("[UNK]")  # Add an UNK token at the end
-        return {word: idx for idx, word in enumerate(sorted_words)}
+        word_to_index = {word: idx for idx, word in enumerate(sorted_words)}
+        return word_to_index
 
     def text_to_tensor(self):
-        # Convert the text into a tensor representation, with [UNK] handling
+        # Convert the text into a tensor representation
         words = re.findall(r'\b\w+\b', self.text.lower())
-        int_sequence = [self.word_index.get(word, self.word_index["[UNK]"]) for word in words]
+        int_sequence = [self.word_index[word] for word in words if word in self.word_index]
         return torch.tensor(int_sequence, dtype=torch.long)
-
-    def tensor_to_text(self, tensor):
-        # Convert the tensor back to words using the index_to_word mapping
-        word_list = [self.index_to_word.get(idx.item(), "[UNK]") for idx in tensor]
-        return " ".join(word_list)
-
+    
+    def split_into_context_tensors(self):
+        # for splitting long text into separate tensors of length n_context
+        tensor = self.text_to_tensor()
+        n = self.n_context
+        trimmed_length = (len(tensor) // n) * n  # Ensure the length is a multiple of n_context
+        tensor = tensor[:trimmed_length]  # Trim excess elements
+        return [tensor[i:i + n] for i in range(0, len(tensor), n)]
+    
 
 class Trainer:
-    """
-    for mac M1 chip, use mps instead of cuda
-    """
-    def __init__(self, model: Transformer,
-                 text: str, optimizer: torch.optim.Optimizer,
-                 device: torch.device = ("cuda" if torch.cuda.is_available() else "cpu"),
-                 batch_size: int = 1, max_batches: Optional[int] = None,
-                 print_interval: int = 1,
+    def __init__(self, model: Transformer, text: str, optimizer: torch.optim.Optimizer,
+                 device: torch.device = ("mps" if torch.mps.is_available() else "cpu"),
+                 batch_size: int = 1, max_batches: Optional[int] = None, print_interval: int = 1,
                  epochs: int = 1):
         print("Trainer Constructor...")
         self.model = model
@@ -254,7 +221,7 @@ class Trainer:
         self.max_batches = max_batches
         self.print_interval = print_interval
         self.epochs = epochs
-        self.dataset = TextFinder(text)
+        self.dataset = TextProcessor(text)
         self.data_tensor = self.dataset.text_to_tensor().to(device)
         self.dataloader = self.create_dataloader()
 
@@ -263,8 +230,7 @@ class Trainer:
 
     def create_dataloader(self):
         # Create batches
-        # TODO double check the unfold
-        data_batches = self.data_tensor.unfold(0, self.batch_size, self.batch_size)
+        data_batches = self.data_tensor.unfold(0, self.batch_size, 2)
         return DataLoader(data_batches, batch_size=1, shuffle=False)  # Using DataLoader to load batches
 
     def train(self):
@@ -304,34 +270,11 @@ class Trainer:
         return self.model, training_records
 
 
-    def generate(self, prompt: str, max_tokens: int = 50, temperature: float = 1.0) -> str:
-        self.model.eval()
-
-        text_finder = TextFinder(prompt)
-        input_tensor = text_finder.text_to_tensor().unsqueeze(0).to(self.device)
-
-        generated_tokens = input_tensor.squeeze(0).tolist()
-
-        for _ in range(max_tokens):
-            logits = self.model(input_tensor)
-            logits = logits[:, -1, :] / temperature
-            probabilities = F.softmax(logits, dim=-1)
-            next_token = torch.multinomial(probabilities, 1).item()
-
-            generated_tokens.append(next_token)
-            input_tensor = torch.cat([input_tensor, torch.tensor([[next_token]], device=self.device)], dim=1)
-
-        # Use `index_to_word` instead of `word_index`
-        generated_text = text_finder.tensor_to_text(torch.tensor(generated_tokens))
-
-        return generated_text
-
-
 def main():
     gpt_config = GPTConfig()
     gpt_model = Transformer(gpt_config)
 
-    optimizer = optim.Adam(gpt_model.parameters(), lr=0.01)
+    optimizer = optim.Adam(gpt_model.parameters(), lr=0.001)
 
     some_text = """
         In reality, of course, we don't construct such chains explicitly, but instead we want them to learn from data.
@@ -339,7 +282,7 @@ def main():
         In computers, text is stored as a sequence of numbers. Our neural network, in principle, can learn to predict the next number in the sequence. However, each number usually represents a single letter, or even just part of a letter.
     """
 
-    trainer = Trainer(gpt_model, some_text, optimizer, epochs=100, batch_size=50, print_interval=100)
+    trainer = Trainer(gpt_model, some_text, optimizer, epochs=1, batch_size=1, print_interval=1)
 
     print("Starting training...")
     trained_model, training_records = trainer.train()
@@ -349,15 +292,6 @@ def main():
     for record in training_records:
         print(f"Batch {record['batch']}, Loss: {record['loss']}")
 
-    print("**"*50)
-    torch.save(trained_model, "model.pt")
-
-    # Generate text with the trained model
-    prompt = "In reality, of course, we don't construct"
-    generated_text = trainer.generate(prompt)
-
-    print("Generated text:")
-    print(generated_text)
 
 if __name__ == "__main__":
     main()
