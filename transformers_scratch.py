@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 
 import torch
@@ -11,6 +10,7 @@ from tqdm import tqdm
 from typing import Optional, Tuple, List
 
 import re
+
 
 @dataclass
 class GPTConfig:
@@ -36,7 +36,6 @@ class GPTConfig:
                     )
             ) * self.n_layers,  # for each layer
         )
-
 
 
 # note: the residual stream is `n_context` by `d_model`
@@ -108,6 +107,7 @@ class MultiHeadedAttention(nn.Module):
 
         return output
 
+
 class MLP(nn.Module):
     def __init__(self, cfg: GPTConfig):
         print("MLP Constructor...")
@@ -148,7 +148,7 @@ class TransformerBlock(nn.Module):
 class Transformer(nn.Module):
 
     def __init__(self, cfg: GPTConfig):
-        print("**"*30)
+        print("**" * 30)
         print("Transformer Constructor...")
         super().__init__()
         self.embedding = nn.Embedding(cfg.d_vocab, cfg.d_model)
@@ -177,9 +177,10 @@ output:
 nn.Linear(d_model, d_vocab): R^{n_c * d_m} -> R^{n_c * d_v}
 """
 
+
 class TextProcessor:
     def __init__(self, text, cfg):
-        print("=="*30)
+        print("==" * 30)
         print("TextFinder Constructor...")
         self.text = text
         self.word_index = self.create_word_index(text)
@@ -197,7 +198,7 @@ class TextProcessor:
         words = re.findall(r'\b\w+\b', self.text.lower())
         int_sequence = [self.word_index[word] for word in words if word in self.word_index]
         return torch.tensor(int_sequence, dtype=torch.long)
-    
+
     def split_into_context_tensors(self):
         # for splitting long text into separate tensors of length n_context
         tensor = self.text_to_tensor()
@@ -205,7 +206,7 @@ class TextProcessor:
         trimmed_length = (len(tensor) // n) * n  # Ensure the length is a multiple of n_context
         tensor = tensor[:trimmed_length]  # Trim excess elements
         return [tensor[i:i + n] for i in range(0, len(tensor), n)]
-    
+
 
 class Trainer:
     def __init__(self, model: Transformer, text: str, optimizer: torch.optim.Optimizer,
