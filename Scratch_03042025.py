@@ -246,7 +246,7 @@ class Trainer:
     def __init__(self, model: Transformer,
                  text: str, optimizer: torch.optim.Optimizer,
                  device: torch.device = ("cuda" if torch.cuda.is_available() else "cpu"),
-                 batch_size: int = 1, max_batches: Optional[int] = None,
+                 sample_size: int = 1, max_samples: Optional[int] = None,
                  print_interval: int = 1,
                  epochs: int = 1):
         print("Trainer Constructor...")
@@ -254,8 +254,8 @@ class Trainer:
         self.text = text
         self.optimizer = optimizer
         self.device = device
-        self.batch_size = batch_size
-        self.max_batches = max_batches
+        self.sample_size = sample_size
+        self.max_samples = max_samples
         self.print_interval = print_interval
         self.epochs = epochs
         self.dataset = TextFinder(text)
@@ -266,10 +266,14 @@ class Trainer:
         self.model.to(device)
 
     def create_dataloader(self):
+        #data_samples = [self.data_tensor[i:i+self.sample_size] for i in range(0, len(self.data_tensor)-self.sample_size)]
+        #return DataLoader(data_samples, batch_size=1, shuffle=False)
         # Create batches
         # TODO double check the unfold
-        data_batches = self.data_tensor.unfold(0, self.batch_size, self.batch_size)
-        return DataLoader(data_batches, batch_size=1, shuffle=False)  # Using DataLoader to load batches
+        data_samples = self.data_tensor.unfold(0, self.sample_size, self.sample_size)
+        for data_sample in data_samples:
+            print("Data sample: ", data_sample)
+        return DataLoader(data_samples, batch_size=1, shuffle=False)  # Using DataLoader to load batches
 
     def train(self):
         print(f"Training with device: {self.device}")
@@ -279,16 +283,19 @@ class Trainer:
         
         for epoch in range(self.epochs):
             print(f"Epoch {epoch + 1}/{self.epochs}")
-            for i, batch in tqdm(enumerate(self.dataloader), total=len(self.dataloader), desc="Training"):
-                batch = batch.squeeze(0)  # Remove extra dimension from the batch
+            for i, sample in tqdm(enumerate(self.dataloader), total=len(self.dataloader), desc="Training"):
+                sample = sample.squeeze(0)  # Remove extra dimension from the sample
 
-                inputs = batch[:-1]
-                targets = batch[1:]
+                inputs = sample[:-1]
+                targets = sample[1:]
 
                 # forward pass
-                logits = self.model(inputs)
-                loss = nn.CrossEntropyLoss()(logits.view(-1, logits.size(-1)), targets.view(-1))
+                probabilities = self.model(inputs)
+                log_probabilities = torch.log(probabilities)
 
+                # Calculate loss using NLLLoss
+                loss = F.nll_loss(log_probabilities.view(-1, log_probabilities.size(-1)), targets.view(-1))
+                
                 # backward pass
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -296,28 +303,26 @@ class Trainer:
 
                 # record progress
                 training_records.append({
-                    "batch": i,
+                    "sample": i,
                     "loss": loss.item(),
                 })
                 loss_values.append(loss.item())  # Store loss value
 
 
                 if i % self.print_interval == 0:
-                    print(f"Batch {i}, Loss: {loss.item()}")
+                    print(f"Sample {i}, Loss: {loss.item()}")
 
-                if self.max_batches is not None and i >= self.max_batches:
+                if self.max_samples is not None and i >= self.max_samples:
                     break
                 
         plt.figure(figsize=(10, 5))
         plt.plot(loss_values, label="Training Loss")
-        plt.xlabel("Batch")
+        plt.xlabel("Sample")
         plt.ylabel("Loss")
         plt.title("Training Loss Over Time")
         plt.legend()
         plt.grid(True)
         plt.show()
-
-                
 
         return self.model, training_records
 
@@ -384,7 +389,7 @@ def main():
     gpt_config = GPTConfig()
     gpt_model = Transformer(gpt_config)
 
-    optimizer = optim.Adam(gpt_model.parameters(), lr=0.01)
+    optimizer = optim.Adam(gpt_model.parameters(), lr=1e-4)
 
     some_text = """
         In reality, of course, we don't construct such chains explicitly, but instead we want them to learn from data.
@@ -393,7 +398,7 @@ def main():
     """
     some_book = get_gutenberg_book(data_temp="./gutenberg_data")
     
-    trainer = Trainer(gpt_model, some_book, optimizer, epochs=100, batch_size=50, print_interval=100)
+    trainer = Trainer(gpt_model, some_book, optimizer, epochs=1, sample_size=50, print_interval=100)
 
     print("Starting training...")
     trained_model, training_records = trainer.train()
@@ -401,7 +406,7 @@ def main():
     # Output the training records (losses)
     print("Training complete.")
     for record in training_records:
-        print(f"Batch {record['batch']}, Loss: {record['loss']}")
+        print(f"Sample {record['sample']}, Loss: {record['loss']}")
 
     print("**"*50)
     torch.save(trained_model, "model.pt")
