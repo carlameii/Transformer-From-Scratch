@@ -273,7 +273,7 @@ class Trainer:
         data_samples = self.data_tensor.unfold(0, self.sample_size, self.sample_size)
         for data_sample in data_samples:
             print("Data sample: ", data_sample)
-        return DataLoader(data_samples, batch_size=1, shuffle=True)  # Using DataLoader to load batches
+        return DataLoader(data_samples, batch_size=1, shuffle=False)  # Using DataLoader to load batches
 
     def train(self):
         print(f"Training with device: {self.device}")
@@ -290,9 +290,12 @@ class Trainer:
                 targets = sample[1:]
 
                 # forward pass
-                logits = self.model(inputs)
-                loss = nn.CrossEntropyLoss()(logits.view(-1, logits.size(-1)), targets.view(-1))
+                probabilities = self.model(inputs)
+                log_probabilities = torch.log(probabilities)
 
+                # Calculate loss using NLLLoss
+                loss = F.nll_loss(log_probabilities.view(-1, log_probabilities.size(-1)), targets.view(-1))
+                
                 # backward pass
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -314,14 +317,12 @@ class Trainer:
                 
         plt.figure(figsize=(10, 5))
         plt.plot(loss_values, label="Training Loss")
-        plt.xlabel("Batch")
+        plt.xlabel("Sample")
         plt.ylabel("Loss")
         plt.title("Training Loss Over Time")
         plt.legend()
         plt.grid(True)
         plt.show()
-
-                
 
         return self.model, training_records
 
