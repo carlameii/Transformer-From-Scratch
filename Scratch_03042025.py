@@ -389,7 +389,7 @@ def main():
     gpt_config = GPTConfig()
     gpt_model = Transformer(gpt_config)
 
-    optimizer = optim.Adam(gpt_model.parameters(), lr=0.01)
+    optimizer = optim.Adam(gpt_model.parameters(), lr=1e-4)
 
     some_text = """
         In reality, of course, we don't construct such chains explicitly, but instead we want them to learn from data.
