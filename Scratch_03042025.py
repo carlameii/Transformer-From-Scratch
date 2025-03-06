@@ -233,6 +233,12 @@ class TextFinder:
         int_sequence = [self.word_index.get(word, self.word_index["[UNK]"]) for word in words]
         return torch.tensor(int_sequence, dtype=torch.long)
 
+    def text_to_tensor_for_prompt(self, prompt):
+        # Convert the prompt into a tensor representation (based on how the words appear in self.dataset)
+        words = re.findall(r'\b\w+\b', prompt.lower())
+        int_sequence = [self.word_index.get(word, self.word_index["[UNK]"]) for word in words]
+        return torch.tensor(int_sequence, dtype=torch.long)
+
     def tensor_to_text(self, tensor):
         # Convert the tensor back to words using the index_to_word mapping
         word_list = [self.index_to_word.get(idx.item(), "[UNK]") for idx in tensor]
@@ -330,8 +336,8 @@ class Trainer:
     def generate(self, prompt: str, max_tokens: int = 50, temperature: float = 1.0) -> str:
         self.model.eval()
 
-        text_finder = TextFinder(prompt)
-        input_tensor = text_finder.text_to_tensor().unsqueeze(0).to(self.device)
+        text_finder = self.dataset
+        input_tensor = text_finder.text_to_tensor_for_prompt(prompt).unsqueeze(0).to(self.device)
 
         generated_tokens = input_tensor.squeeze(0).tolist()
 
@@ -345,7 +351,7 @@ class Trainer:
             input_tensor = torch.cat([input_tensor, torch.tensor([[next_token]], device=self.device)], dim=1)
 
         # Use `index_to_word` instead of `word_index`
-        generated_text = text_finder.tensor_to_text(torch.tensor(generated_tokens))
+        generated_text = self.dataset.tensor_to_text(torch.tensor(generated_tokens))
 
         return generated_text
 
@@ -412,7 +418,7 @@ def main():
     torch.save(trained_model, "model.pt")
 
     # Generate text with the trained model
-    prompt = "In reality, of course, we don't construct"
+    prompt = "Today I plan to complete the following tasks, "
     generated_text = trainer.generate(prompt)
 
     print("Generated text:")
