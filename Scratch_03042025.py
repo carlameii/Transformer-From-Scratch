@@ -110,8 +110,6 @@ class MultiHeadedAttention(nn.Module):
 
         summed_heads = torch.sum(torch.stack(head_outputs), dim=0)  # Sum over heads -> (n_context, d_head)
 
-        summed_heads += x  # Element-wise addition (ensures same shape)
-
         # Project back to d_model
         output = self.wo(summed_heads)  # (n_context, d_model)
 
@@ -149,6 +147,8 @@ class TransformerBlock(nn.Module):
         # uses `MultiHeadedAttention` and `MLP`
         self.multiheadattn = MultiHeadedAttention(cfg)
         self.mlp = MLP(cfg)
+        self.norm1 = nn.RMSNorm(cfg.d_model)
+        self.norm2 = nn.RMSNorm(cfg.d_model)
 
     # def forward(self,
     #             x: Float[torch.Tensor, "n_context d_vocab"]) -> Float[torch.Tensor, "n_context d_vocab"]:
@@ -158,9 +158,11 @@ class TransformerBlock(nn.Module):
 
     # d_model instead of d_vocab
     def forward(self, x: Float[torch.Tensor, "n_context d_model"]) -> Float[torch.Tensor, "n_context d_model"]:
-        out = self.multiheadattn(x)  # Ensures the shape is (n_context, d_model)
-        out = self.mlp(out) + x  # Residual connection
-        return out
+        attn_output = self.multiheadattn(self.norm1(x))
+        x = x + attn_output  # Residual connection
+        mlp_output = self.mlp(self.norm2(x))
+        x = x + mlp_output  # Residual connection
+        return x
 
 
 class Transformer(nn.Module):
