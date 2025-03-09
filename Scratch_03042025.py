@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+import os
 
 import requests
 import torch
@@ -12,6 +13,8 @@ from tqdm import tqdm
 from typing import Optional, Tuple, List
 import matplotlib.pyplot as plt
 import re
+from transformers import AutoTokenizer
+
 
 @dataclass
 class GPTConfig:
@@ -22,6 +25,7 @@ class GPTConfig:
     n_heads: int = 4
     d_head: int = 32
     n_layers: int = 6
+    n_context: int = 1024
     act_fn: type[nn.Module] = nn.ReLU
 
     @property
@@ -167,22 +171,27 @@ class TransformerBlock(nn.Module):
 class Transformer(nn.Module):
 
     def __init__(self, cfg: GPTConfig):
-        print("**"*30)
-        print("Transformer Constructor...")
         super().__init__()
         self.embedding = nn.Embedding(cfg.d_vocab, cfg.d_model)
+        self.positional_embedding = nn.Embedding(cfg.n_context, cfg.d_model)  
         self.unembedding = nn.Linear(cfg.d_model, cfg.d_vocab)
         self.transformer_blocks = nn.ModuleList([TransformerBlock(cfg) for _ in range(cfg.n_layers)])
 
-    # uses `MultiHeadedAttention` and `MLP`
-    # uses nn.Embedding for the embedding, transpose of it for the unembedding
-
     def forward(self, x: Int[torch.Tensor, "n_context"]) -> Float[torch.Tensor, "n_context d_vocab"]:
-        out = self.embedding(x)
-        # print(out.shape)
+        
+        # calculate token and positional embeddings and sum them
+        token_embeddings = self.embedding(x)
+        
+        position_ids = torch.arange(x.size(1), device=x.device).unsqueeze(0).expand(x.size(0), -1)  
+        position_embeddings = self.positional_embedding(position_ids)
+
+        out = token_embeddings + position_embeddings  
+
         for block in self.transformer_blocks:
             out = block(out)
+
         out = F.softmax(self.unembedding(out), dim=-1)
+
         return out
 
 
@@ -196,55 +205,33 @@ output:
 nn.Linear(d_model, d_vocab): R^{n_c * d_m} -> R^{n_c * d_v}
 """
 
+class Gpt2BPETokenizer:
+    def __init__(self):
+        self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
+
+    def encode(self, text):
+        return self.tokenizer(text, return_tensors="pt")["input_ids"].squeeze(0)
+
+    def decode(self, tokens):
+        return self.tokenizer.decode(tokens, skip_special_tokens=True)
+
+
 class TextFinder:
     def __init__(self, text):
-        print("=="*30)
+        print("==" * 30)
         print("TextFinder Constructor...")
+        self.tokenizer = Gpt2BPETokenizer()
         self.text = text
-        self.word_index = self.create_word_index(text)
-
-
-        # added below
-        self.index_to_word = {idx: word for word, idx in self.word_index.items()}  # Reverse mapping
-
-    # def create_word_index(self, text):
-    #     # Create a word index mapping each word to a unique index
-    #     words = re.findall(r'\b\w+\b', text.lower())
-    #     sorted_words = sorted(set(words))
-    #     # word_to_index = {word: idx for idx, word in enumerate(sorted_words)}
-    #     # return word_to_index
-    #     return {word: idx for idx, word in enumerate(sorted_words)}
-    #
-    # def text_to_tensor(self):
-    #     # Convert the text into a tensor representation
-    #     words = re.findall(r'\b\w+\b', self.text.lower())
-    #     int_sequence = [self.word_index[word] for word in words if word in self.word_index]
-    #     return torch.tensor(int_sequence, dtype=torch.long)
-
-    def create_word_index(self, text):
-        # Create a word index mapping each word to a unique index, with [UNK] token
-        words = re.findall(r'\b\w+\b', text.lower())
-        sorted_words = sorted(set(words))
-        sorted_words.append("[UNK]")  # Add an UNK token at the end
-        return {word: idx for idx, word in enumerate(sorted_words)}
+        self.text_tensor = self.text_to_tensor()
 
     def text_to_tensor(self):
-        # Convert the text into a tensor representation, with [UNK] handling
-        words = re.findall(r'\b\w+\b', self.text.lower())
-        int_sequence = [self.word_index.get(word, self.word_index["[UNK]"]) for word in words]
-        return torch.tensor(int_sequence, dtype=torch.long)
+        return self.tokenizer.encode(self.text)
 
     def text_to_tensor_for_prompt(self, prompt):
-        # Convert the prompt into a tensor representation (based on how the words appear in self.dataset)
-        words = re.findall(r'\b\w+\b', prompt.lower())
-        int_sequence = [self.word_index.get(word, self.word_index["[UNK]"]) for word in words]
-        return torch.tensor(int_sequence, dtype=torch.long)
+        return self.tokenizer.encode(prompt)
 
     def tensor_to_text(self, tensor):
-        # Convert the tensor back to words using the index_to_word mapping
-        word_list = [self.index_to_word.get(idx.item(), "[UNK]") for idx in tensor]
-        return " ".join(word_list)
-
+        return self.tokenizer.decode(tensor)
 
 class Trainer:
     """
