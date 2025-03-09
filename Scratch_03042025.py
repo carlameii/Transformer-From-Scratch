@@ -7,6 +7,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from tokenizers import Tokenizer
+from tokenizers.models import BPE
+from tokenizers.trainers import BpeTrainer
+from tokenizers.pre_tokenizers import Whitespace
 from jaxtyping import Float, Int
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -258,6 +262,7 @@ class Trainer:
                  print_interval: int = 1,
                  epochs: int = 1):
         print("Trainer Constructor...")
+
         self.model = model
         self.text = text
         self.optimizer = optimizer
@@ -267,24 +272,36 @@ class Trainer:
         self.print_interval = print_interval
         self.epochs = epochs
         self.dataset = TextFinder(text)
-        self.data_tensor = self.dataset.text_to_tensor().to(device)
-        self.dataloader = self.create_dataloader()
+        self.tokenizer = Tokenizer(BPE())
 
         # Move model to device
         self.model.to(device)
 
     def create_dataloader(self):
+        encoded_data = self.tokenizer.encode(self.text)
+
+        data_tensor = torch.tensor(encoded_data.ids)
         #data_samples = [self.data_tensor[i:i+self.sample_size] for i in range(0, len(self.data_tensor)-self.sample_size)]
         #return DataLoader(data_samples, batch_size=1, shuffle=False)
         # Create batches
         # TODO double check the unfold
-        data_samples = self.data_tensor.unfold(0, self.sample_size, self.sample_size)
+        data_samples = data_tensor.unfold(0, self.sample_size, self.sample_size)
         for data_sample in data_samples:
             print("Data sample: ", data_sample)
         return DataLoader(data_samples, batch_size=1, shuffle=False)  # Using DataLoader to load batches
 
     def train(self):
         print(f"Training with device: {self.device}")
+
+        # Set pre-tokenization (whitespace splitting here)
+        self.tokenizer.pre_tokenizer = Whitespace()
+        # Trainer for BPE
+        trainer = BpeTrainer(vocab_size=100, special_tokens=["[UNK]", "[CLS]", "[SEP]", "[PAD]", "[MASK]"])
+        # Train the tokenizer
+        self.tokenizer.train_from_iterator(self.text, trainer)
+
+        self.dataloader = self.create_dataloader()
+
         training_records: List[dict] = []
         self.model.train()
         loss_values = []
@@ -339,9 +356,12 @@ class Trainer:
         self.model.eval()
 
         text_finder = self.dataset
-        input_tensor = text_finder.text_to_tensor_for_prompt(prompt).unsqueeze(0).to(self.device)
+        encoding = self.tokenizer.encode("Hello, this is an example.")
 
-        generated_tokens = input_tensor.squeeze(0).tolist()
+        input_tensor = torch.tensor(encoding.ids)
+        
+        #for  in generated_tokens:
+        #    xprint(f"Generated tokens: {token}")
 
         for _ in range(max_tokens):
             logits = self.model(input_tensor)
@@ -353,7 +373,7 @@ class Trainer:
             input_tensor = torch.cat([input_tensor, torch.tensor([[next_token]], device=self.device)], dim=1)
 
         # Use `index_to_word` instead of `word_index`
-        generated_text = self.dataset.tensor_to_text(torch.tensor(generated_tokens))
+        generated_text = self.tokenizer.decode(input_tensor)
 
         return generated_text
 
