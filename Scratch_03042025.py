@@ -13,6 +13,7 @@ from tqdm import tqdm
 from typing import Optional, Tuple, List
 import matplotlib.pyplot as plt
 import re
+from tokenizers import Tokenizer, models, pre_tokenizers, decoders, trainers
 
 @dataclass
 class GPTConfig:
@@ -267,8 +268,7 @@ class Trainer:
         self.print_interval = print_interval
         self.epochs = epochs
         self.dataset = TextFinder(text)
-        self.data_tensor = self.dataset.text_to_tensor().to(device)
-        self.dataloader = self.create_dataloader()
+        self.tokenizer = Tokenizer(models.BPE())
 
         # Move model to device
         self.model.to(device)
@@ -284,6 +284,18 @@ class Trainer:
         return DataLoader(data_samples, batch_size=1, shuffle=False)  # Using DataLoader to load batches
 
     def train(self):
+        print(f"Tokenizing:")
+
+        self.tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()
+        #self.tokenizer.decoder = decoders.ByteLevel()
+        trainer = trainers.BpeTrainer(vocab_size=10000, min_frequency=2, show_progress=True)
+        self.tokenizer.train_from_iterator(self.text.split(), trainer)
+
+        encoded = self.tokenizer.encode(self.text)
+        
+        self.data_tensor = torch.tensor(encoded.ids)
+        self.dataloader = self.create_dataloader()
+
         print(f"Training with device: {self.device}")
         training_records: List[dict] = []
         self.model.train()
@@ -338,8 +350,8 @@ class Trainer:
     def generate(self, prompt: str, max_tokens: int = 50, temperature: float = 1.0) -> str:
         self.model.eval()
 
-        text_finder = self.dataset
-        input_tensor = text_finder.text_to_tensor_for_prompt(prompt).unsqueeze(0).to(self.device)
+        encoded = self.tokenizer.encode(prompt)
+        input_tensor = torch.tensor(encoded.ids).unsqueeze(0)
 
         generated_tokens = input_tensor.squeeze(0).tolist()
 
@@ -352,12 +364,9 @@ class Trainer:
             generated_tokens.append(next_token)
             input_tensor = torch.cat([input_tensor, torch.tensor([[next_token]], device=self.device)], dim=1)
 
-        # Use `index_to_word` instead of `word_index`
-        generated_text = self.dataset.tensor_to_text(torch.tensor(generated_tokens))
+        generated_text = self.tokenizer.decode(generated_tokens)
 
         return generated_text
-
-
 
 def get_gutenberg_book(
 	id: int|None = 84,
