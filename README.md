@@ -13,11 +13,11 @@ This is an implementation of a simple transformer for the Spring 2025 course: SP
 All four of us closely collaborated to implement the majority of the Transformer architecture itself, particularly the `AttentionHead`, `TransformerBlock`, and `Transformer` classes. Contributions that were more individual efforts are described below by collaborator:
 - Brendan McKinley:
 - Bingshen Lu:
-- Carla Ellefsen: 
+- Carla Ellefsen: Worked on implementing the multiheaded attention mechanism, positional encodings, loading the dataset, and the initial tokenization that was done before the pretrained Tokenizer was used instead. Additionally, was responsible for much of the repository maintenance, such as creating the README, writing issues, merging PRs, etc.
 - Diya Vinod: 
 
 ## Language Model Use
-Generative AI was partially used to help implement this simple language model.
+Generative AI was partially used to help implement this simple language model. ChatGPT was used to help implement the multi-head attention mechanism and positional encodings, and GitHub CoPilot was also useful for connecting the pieces of the Transformer architecture together. 
 ### Links to ChatGPT Conversations:
  - https://chatgpt.com/share/67d35104-a110-8012-8dc1-41192c5e6041
  - https://chatgpt.com/share/67d3512c-c9fc-8012-880f-2e0b093ebfe5
