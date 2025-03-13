@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from typing import Optional, Tuple, List
 import matplotlib.pyplot as plt
+import math
 import re
 
 @dataclass
@@ -139,6 +140,23 @@ class MLP(nn.Module):
         return out
 
 
+class PositionalEncoding(nn.Module): 
+    def __init__(self, d_model, max_len: int = 5000):
+        super().__init__()
+        self.d_model = d_model
+
+        position = torch.arange(max_len).unsqueeze(1)  # (max_len, 1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))  # (d_model//2,)
+        pe = torch.zeros(max_len, d_model)  # (max_len, d_model)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term) 
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x + self.pe[:x.size(0), :]
+        return x
+
+
 class TransformerBlock(nn.Module):
     def __init__(self, cfg: GPTConfig):
         print("TransformerBlock Constructor...")
@@ -171,6 +189,7 @@ class Transformer(nn.Module):
         print("Transformer Constructor...")
         super().__init__()
         self.embedding = nn.Embedding(cfg.d_vocab, cfg.d_model)
+        self.positional_encoding = PositionalEncoding(cfg.d_model)
         self.unembedding = nn.Linear(cfg.d_model, cfg.d_vocab)
         self.transformer_blocks = nn.ModuleList([TransformerBlock(cfg) for _ in range(cfg.n_layers)])
 
@@ -179,7 +198,7 @@ class Transformer(nn.Module):
 
     def forward(self, x: Int[torch.Tensor, "n_context"]) -> Float[torch.Tensor, "n_context d_vocab"]:
         out = self.embedding(x)
-        # print(out.shape)
+        out = self.positional_encoding(out)
         for block in self.transformer_blocks:
             out = block(out)
         out = F.softmax(self.unembedding(out), dim=-1)
