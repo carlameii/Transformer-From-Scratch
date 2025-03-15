@@ -11,7 +11,7 @@ This is an implementation of a simple transformer for the Spring 2025 course: SP
 
 ## Author Contributions
 All four of us closely collaborated to implement the majority of the Transformer architecture itself, particularly the `AttentionHead`, `TransformerBlock`, and `Transformer` classes. Contributions that were more individual efforts are described below by collaborator:
-- Brendan McKinley:
+- Brendan McKinley: Worked on immplementing the byte-pair encoding tokenization, Trainer class, and miscellaneous debugging tasks. 
 - Bingshen Lu:
 - Carla Ellefsen: Worked on implementing the multiheaded attention mechanism, positional encodings, loading the dataset, and the initial tokenization that was done before the pretrained Tokenizer was used instead. Additionally, was responsible for much of the repository maintenance, such as creating the README, writing issues, merging PRs, etc.
 - Diya Vinod: 
