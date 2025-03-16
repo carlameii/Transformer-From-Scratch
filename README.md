@@ -14,7 +14,7 @@ All four of us closely collaborated to implement the majority of the Transformer
 - Brendan McKinley: Worked on implementing the byte-pair encoding tokenization, multilayer perceptrons, Trainer class and generate function, and miscellaneous debugging tasks. 
 - Bingshen Lu:
 - Carla Ellefsen: Worked on implementing the multiheaded attention mechanism, positional encodings, loading the dataset, and the initial tokenization that was done before the pretrained Tokenizer was used instead. Additionally, was responsible for much of the repository maintenance, such as creating the README, writing issues, merging PRs, etc.
-- Diya Vinod: Helped implement the transformer architecture, created the loss visualization, helped with implementing byte-pair encoding, added the training data for the model, improved formatting and added comments explaining code.
+- Diya Vinod: Created the loss visualization, helped with implementing byte-pair encoding, added the training data for the model, improved formatting and added comments explaining code.
 
 ## Language Model Use
 Generative AI was partially used to help implement this simple language model. ChatGPT was used to help implement the multi-head attention mechanism and positional encodings, and GitHub CoPilot was also useful for connecting the pieces of the Transformer architecture together. GitHub copilot was also used to comment the code.
