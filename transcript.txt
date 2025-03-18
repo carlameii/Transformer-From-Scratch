@@ -1,3 +1,0 @@
-LLM transcription
-
-ChatGPT was used to write comments in the code.
